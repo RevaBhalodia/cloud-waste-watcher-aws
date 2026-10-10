@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Run tests (against a simulated AWS, no real credentials)
+        run: pytest -q
+
+  secret-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if anything looks like an AWS access key
+        run: |
+          if grep -rEn "AKIA[0-9A-Z]{16}" --exclude-dir=.git --exclude-dir=.terraform .; then
+            echo "Possible AWS access key committed. Revoke it in IAM and remove it from history."
+            exit 1
+          fi
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate

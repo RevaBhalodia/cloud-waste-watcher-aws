@@ -1,0 +1,4 @@
+# Copy this file to terraform.tfvars (it is git-ignored) and fill it in.
+notification_email = "you@example.com"
+dashboard_token    = "paste-a-long-random-string-here"
+# allowed_origin   = "https://your-site.pages.dev"

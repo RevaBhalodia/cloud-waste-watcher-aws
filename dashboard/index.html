@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloud Waste Watcher</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--mute:#6b7280;--line:#e5e7eb;--acc:#0d9488;--warn:#d97706}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--ink:#e8ebf0;--mute:#8b94a3;--line:#262c36;--acc:#2dd4bf;--warn:#fbbf24}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.25rem;margin:0}.sub{color:var(--mute);font-size:.9rem;margin:2px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.big{font-size:2.6rem;font-weight:700;letter-spacing:-.02em;color:var(--acc)}.big small{font-size:1rem;color:var(--mute);font-weight:400}
+.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}.id{font-family:ui-monospace,Consolas,monospace;font-size:.8rem;color:var(--mute);word-break:break-all}
+.cost{white-space:nowrap;font-weight:600;color:var(--warn)}.mute{color:var(--mute);font-size:.85rem}
+h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 6px}
+svg{width:100%;height:auto;display:block}button{background:var(--acc);border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+</style></head><body><main>
+<h1>Cloud Waste Watcher</h1><div class="sub" id="sub">Loading...</div>
+<div class="card"><h2>Estimated waste</h2><div class="big" id="total">-</div><div class="mute" id="delta"></div></div>
+<div class="card"><h2>Last 30 scans</h2><svg id="chart" viewBox="0 0 600 140" role="img" aria-label="Trend of estimated monthly waste"></svg></div>
+<div id="groups"></div>
+<p class="mute" id="note"></p>
+</main><script>
+const API_URL = "";          // paste your Function URL here; empty = demo data
+const USD_TO_INR = 96.5;     // keep equal to pricing.py
+const DEMO = {scan_date:"2026-10-07",
+ history:[3.1,3.1,4.0,4.0,4.6,5.5,5.5,4.7,4.7,6.4].map((t,i)=>({date:"2026-09-"+(28+i>30?"0"+(i-2):28+i),total:t,items:2+(i>4)})),
+ findings:[{check:"idle_elastic_ip",resource_id:"eipalloc-0a1b2c",title:"Elastic IP 15.0.0.1 is not attached to anything",age_days:null,monthly_usd:3.65,tags:{}},
+ {check:"unattached_volume",resource_id:"vol-0abc123",title:"Unattached 20 GB gp3 volume",age_days:12,monthly_usd:1.82,tags:{}},
+ {check:"unattached_volume",resource_id:"vol-0def456",title:"Unattached 10 GB gp3 volume",age_days:40,monthly_usd:0.91,tags:{}},
+ {check:"stopped_instance",resource_id:"i-0aa11bb",title:"Stopped t3.micro instance",age_days:21,monthly_usd:null,tags:{}}]};
+const $=id=>document.getElementById(id), usd=n=>"$"+n.toFixed(2), inr=n=>"INR "+Math.round(n*USD_TO_INR).toLocaleString("en-IN");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function load(){
+  if(!API_URL) return DEMO;
+  let t=sessionStorage.getItem("wwtoken")||prompt("Dashboard token:");
+  const r=await fetch(API_URL,{headers:{Authorization:"Bearer "+t}});
+  if(r.status===401){sessionStorage.removeItem("wwtoken");throw new Error("Wrong token - reload and try again");}
+  if(!r.ok) throw new Error("API error "+r.status);
+  sessionStorage.setItem("wwtoken",t); return r.json();
+}
+function chart(h){
+  const v=h.map(x=>x.total), max=Math.max(...v,1), W=600, H=140, p=14;
+  const pts=v.map((y,i)=>[p+i*(W-2*p)/Math.max(v.length-1,1), H-p-y/max*(H-2*p)]);
+  $("chart").innerHTML=v.length<2?'<text x="20" y="70" fill="currentColor" opacity=".6">Trend appears after two scans</text>':
+   `<polyline fill="none" stroke="var(--acc)" stroke-width="3" stroke-linejoin="round" points="${pts.map(q=>q.join(",")).join(" ")}"/>`+
+   pts.map(q=>`<circle cx="${q[0]}" cy="${q[1]}" r="3.5" fill="var(--acc)"/>`).join("");
+}
+function render(d){
+  const f=d.findings, tot=f.reduce((s,x)=>s+(x.monthly_usd||0),0), h=d.history, prev=h.length>1?h[h.length-2].total:null;
+  $("sub").textContent=d.scan_date?`Latest scan: ${d.scan_date} - ${f.length} item(s)`:"No scans yet";
+  $("total").innerHTML=`${usd(tot)}<small> /month - about ${inr(tot)}</small>`;
+  $("delta").textContent=prev===null?"":(tot>prev?"Up ":"Down ")+usd(Math.abs(tot-prev))+" since the previous scan";
+  chart(h);
+  const g={}; f.forEach(x=>(g[x.check]=g[x.check]||[]).push(x));
+  $("groups").innerHTML=Object.entries(g).map(([k,items])=>`<div class="card"><h2>${esc(k.replace(/_/g," "))} (${items.length})</h2>`+
+   items.sort((a,b)=>(b.monthly_usd||0)-(a.monthly_usd||0)).map(x=>`<div class="row"><div><div>${esc(x.title)}</div>
+   <div class="id">${esc(x.resource_id)}</div><div class="mute">${x.age_days==null?"age unknown":x.age_days+" days old"}</div></div>
+   <div class="cost">${x.monthly_usd==null?"-":usd(x.monthly_usd)}</div></div>`).join("")+"</div>").join("")||
+   '<div class="card">All tidy - nothing to clean up.</div>';
+  $("note").textContent=API_URL?"Estimates use list prices; treat totals as a rough guide.":"Demo data - set API_URL to show your real scans.";
+}
+load().then(render).catch(e=>{$("sub").textContent=e.message});
+</script></body></html>

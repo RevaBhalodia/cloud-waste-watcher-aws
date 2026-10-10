@@ -1,0 +1,21 @@
+# secrets and local state: NEVER commit these
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform/
+.env
+.aws/
+credentials
+*.csv
+# python
+.venv/
+__pycache__/
+.pytest_cache/
+# build output
+build/
+*.zip
+# Local Terraform plans and secrets
+tfplan
+*.tfplan
+terraform.tfvars
